@@ -21,7 +21,7 @@ export function loadConfig(): AgentConfig {
     spriteName: process.env.SPRITE_NAME || 'moral-agent-alpha',
     initialBudget: parseFloat(process.env.INITIAL_BUDGET || '50.00'),
     awakeningIntervalMinutes: parseInt(process.env.AWAKENING_INTERVAL_MINUTES || '30', 10),
-    maxTokensPerCycle: parseInt(process.env.MAX_TOKENS_PER_CYCLE || '8192', 10),
+    maxTokensPerCycle: parseInt(process.env.MAX_TOKENS_PER_CYCLE || '16384', 10),
     port: parseInt(process.env.PORT || '8080', 10),
     testing,
     baseDir,

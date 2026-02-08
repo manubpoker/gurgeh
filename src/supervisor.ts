@@ -5,7 +5,7 @@ import { logger } from './logger';
 import { initMemory, initDirectories, safeRead } from './memory';
 import { initReasoning, isReasoningAvailable, reason } from './reasoning';
 import { initEconomics, initializeLedger, recordUsage, hasBudget, getLedger } from './economics';
-import { initCommunication, startServer, updateAwakeningCount, setTriggerAwakening } from './communication';
+import { initCommunication, startServer, updateAwakeningCount, setTriggerAwakening, updateScheduleInfo } from './communication';
 import { initExecutor, executeActions } from './action-executor';
 import { gatherContext, writeAwakeningLog } from './identity';
 import { buildUserBriefing, truncateBriefing, estimateTokens } from './prompt-builder';
@@ -104,7 +104,12 @@ function scheduleAwakenings(): void {
     });
   }
 
-  logger.info('Awakenings scheduled', { cron: cronExpr });
+  // Parse interval from cron expression for countdown timer
+  const match = cronExpr.match(/^\*\/(\d+)\s/);
+  const intervalMinutes = match ? parseInt(match[1], 10) : config.awakeningIntervalMinutes;
+  updateScheduleInfo(intervalMinutes);
+
+  logger.info('Awakenings scheduled', { cron: cronExpr, intervalMinutes });
 }
 
 async function runAwakening(): Promise<void> {

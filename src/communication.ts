@@ -18,6 +18,13 @@ export function setTriggerAwakening(fn: () => Promise<boolean>): void {
 let server: ReturnType<typeof express> | null = null;
 let awakeningCount = 0;
 let startTime: number;
+let lastAwakeningEnd: number = 0;
+let currentIntervalMinutes: number = 30;
+
+export function updateScheduleInfo(intervalMinutes: number): void {
+  currentIntervalMinutes = intervalMinutes;
+  lastAwakeningEnd = Date.now();
+}
 
 export function initCommunication(config: AgentConfig): express.Express {
   const app = express();
@@ -68,6 +75,12 @@ export function initCommunication(config: AgentConfig): express.Express {
       },
       uptime_seconds: Math.floor((Date.now() - startTime) / 1000),
       page_views: getPageViews(),
+      schedule: {
+        interval_minutes: currentIntervalMinutes,
+        last_awakening_end: lastAwakeningEnd ? new Date(lastAwakeningEnd).toISOString() : null,
+        next_awakening_at: lastAwakeningEnd ? new Date(lastAwakeningEnd + currentIntervalMinutes * 60000).toISOString() : null,
+        seconds_until_next: lastAwakeningEnd ? Math.max(0, Math.floor((lastAwakeningEnd + currentIntervalMinutes * 60000 - Date.now()) / 1000)) : null,
+      },
     });
   });
 
@@ -89,6 +102,22 @@ export function initCommunication(config: AgentConfig): express.Express {
     } catch (err) {
       logger.error('Failed to save inbox message', { error: String(err) });
       res.status(500).json({ error: 'Failed to save message.' });
+    }
+  });
+
+  // Inbox listing
+  app.get('/api/inbox', (_req, res) => {
+    const files = safeList('/comms/inbox');
+    res.json({ files: files.filter(f => f.endsWith('.md')).sort().reverse() });
+  });
+
+  // Specific inbox message
+  app.get('/api/inbox/:filename', (req, res) => {
+    const content = safeRead(`/comms/inbox/${req.params.filename}`);
+    if (content) {
+      res.type('text').send(content);
+    } else {
+      res.status(404).json({ error: 'Message not found' });
     }
   });
 
@@ -278,6 +307,31 @@ export function initCommunication(config: AgentConfig): express.Express {
     } else {
       res.status(404).json({ error: 'Task not found' });
     }
+  });
+
+  // Get/set schedule
+  app.get('/api/schedule', (_req, res) => {
+    const schedule = safeRead('/self/schedule.txt');
+    res.json({
+      cron: schedule?.trim() || `*/${config.awakeningIntervalMinutes} * * * *`,
+      interval_minutes: currentIntervalMinutes,
+      last_awakening_end: lastAwakeningEnd ? new Date(lastAwakeningEnd).toISOString() : null,
+      next_awakening_at: lastAwakeningEnd ? new Date(lastAwakeningEnd + currentIntervalMinutes * 60000).toISOString() : null,
+    });
+  });
+
+  app.put('/api/schedule', (req, res) => {
+    const { interval_minutes } = req.body;
+    if (!interval_minutes || typeof interval_minutes !== 'number' || interval_minutes < 1 || interval_minutes > 1440) {
+      res.status(400).json({ error: 'interval_minutes must be between 1 and 1440' });
+      return;
+    }
+    const cron = `*/${interval_minutes} * * * *`;
+    safeWrite('/self/schedule.txt', cron, 'overwrite');
+    currentIntervalMinutes = interval_minutes;
+    logger.info('Schedule updated via API', { interval_minutes, cron });
+    // Trigger re-read on next awakening cycle; for immediate effect, trigger an awakening
+    res.json({ status: 'updated', cron, interval_minutes });
   });
 
   // Trigger awakening
