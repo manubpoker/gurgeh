@@ -299,6 +299,9 @@ export function initCommunication(config: AgentConfig): express.Express {
     }
   });
 
+  // Serve public files at root (catch-all, after all API routes)
+  app.use(express.static(publicDir));
+
   server = app;
   return app;
 }
