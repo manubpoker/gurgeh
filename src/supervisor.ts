@@ -11,7 +11,7 @@ import { gatherContext, writeAwakeningLog } from './identity';
 import { buildUserBriefing, truncateBriefing, estimateTokens } from './prompt-builder';
 import { parseActions } from './action-parser';
 import { evaluateActions } from './moral-engine';
-import { createCheckpoint } from './tools/checkpoint';
+import { createCheckpoint, initCheckpoint } from './tools/checkpoint';
 import { loadPageViews, savePageViews } from './tools/earn';
 import * as fsTools from './tools/filesystem';
 
@@ -39,6 +39,7 @@ export async function startSupervisor(cfg: AgentConfig): Promise<void> {
   initEconomics(config);
   initializeLedger(config.initialBudget);
   initExecutor(config);
+  initCheckpoint(config.spriteName);
   loadPageViews(config.baseDir);
 
   // Load founding document
