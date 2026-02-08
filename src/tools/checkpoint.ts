@@ -11,7 +11,7 @@ export function createCheckpoint(label: string): boolean {
   try {
     const safeLabel = label.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 64);
     const spriteFlag = spriteName ? ` -s ${spriteName}` : '';
-    execSync(`sprite checkpoint create${spriteFlag} -c "${safeLabel}"`, {
+    execSync(`sprite checkpoint create${spriteFlag} -comment "${safeLabel}"`, {
       timeout: 30000,
       stdio: 'pipe',
     });
