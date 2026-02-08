@@ -9,6 +9,12 @@ import { recordPageView, getPageViews, getDonationPageHtml } from './tools/earn'
 import * as fsTools from './tools/filesystem';
 import { listTasks, getTask, createTask, updateTask, deleteTask } from './task-manager';
 
+let triggerAwakeningFn: (() => Promise<boolean>) | null = null;
+
+export function setTriggerAwakening(fn: () => Promise<boolean>): void {
+  triggerAwakeningFn = fn;
+}
+
 let server: ReturnType<typeof express> | null = null;
 let awakeningCount = 0;
 let startTime: number;
@@ -271,6 +277,25 @@ export function initCommunication(config: AgentConfig): express.Express {
       res.json({ status: 'archived' });
     } else {
       res.status(404).json({ error: 'Task not found' });
+    }
+  });
+
+  // Trigger awakening
+  app.post('/api/trigger-awakening', async (_req, res) => {
+    try {
+      if (!triggerAwakeningFn) {
+        res.status(503).json({ error: 'Supervisor not ready' });
+        return;
+      }
+      const started = await triggerAwakeningFn();
+      if (started) {
+        res.json({ status: 'awakening_triggered' });
+      } else {
+        res.status(409).json({ error: 'Awakening already in progress' });
+      }
+    } catch (err) {
+      logger.error('Failed to trigger awakening', { error: String(err) });
+      res.status(500).json({ error: 'Failed to trigger awakening' });
     }
   });
 

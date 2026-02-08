@@ -5,7 +5,7 @@ import { logger } from './logger';
 import { initMemory, initDirectories, safeRead } from './memory';
 import { initReasoning, isReasoningAvailable, reason } from './reasoning';
 import { initEconomics, initializeLedger, recordUsage, hasBudget, getLedger } from './economics';
-import { initCommunication, startServer, updateAwakeningCount } from './communication';
+import { initCommunication, startServer, updateAwakeningCount, setTriggerAwakening } from './communication';
 import { initExecutor, executeActions } from './action-executor';
 import { gatherContext, writeAwakeningLog } from './identity';
 import { buildUserBriefing, truncateBriefing, estimateTokens } from './prompt-builder';
@@ -54,6 +54,7 @@ export async function startSupervisor(cfg: AgentConfig): Promise<void> {
 
   // Start HTTP server
   const app = initCommunication(config);
+  setTriggerAwakening(triggerAwakening);
   startServer(app, config.port);
 
   logger.info('Supervisor starting', {
@@ -70,6 +71,17 @@ export async function startSupervisor(cfg: AgentConfig): Promise<void> {
   scheduleAwakenings();
 
   logger.info('Supervisor running. Awaiting next awakening cycle.');
+}
+
+export async function triggerAwakening(): Promise<boolean> {
+  if (isRunning) {
+    logger.warn('Trigger rejected — awakening already in progress');
+    return false;
+  }
+  logger.info('Awakening triggered manually by operator');
+  await runAwakening();
+  scheduleAwakenings(); // reset the timer
+  return true;
 }
 
 function scheduleAwakenings(): void {
