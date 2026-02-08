@@ -10,7 +10,7 @@ export interface AgentConfig {
 }
 
 export interface Action {
-  type: 'write' | 'serve' | 'think' | 'checkpoint' | 'message' | 'fetch' | 'set-schedule';
+  type: 'write' | 'serve' | 'think' | 'checkpoint' | 'message' | 'fetch' | 'set-schedule' | 'execute';
   path?: string;
   mode?: 'append' | 'overwrite';
   content: string;
@@ -18,6 +18,8 @@ export interface Action {
   url?: string;
   cron?: string;
   label?: string;
+  timeout?: number;
+  workingDir?: string;
 }
 
 export interface AwakeningState {
@@ -30,6 +32,35 @@ export interface AwakeningState {
   currentFocus: string | null;
   inbox: InboxMessage[];
   energy: EnergyLedger;
+  recentExecutions: ExecutionLog[];
+  tasks: Task[];
+}
+
+export interface ExecutionLog {
+  id: string;
+  awakening: number;
+  timestamp: string;
+  command: string;
+  workingDir: string;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  duration_ms: number;
+  timedOut: boolean;
+}
+
+export interface Task {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: 'operator' | 'agent';
+  title: string;
+  description: string;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  status: 'suggested' | 'accepted' | 'in_progress' | 'completed' | 'declined';
+  category?: string;
+  agentNotes?: string;
+  completedAt?: string;
 }
 
 export interface InboxMessage {

@@ -1,4 +1,4 @@
-import { Action, ExecutionResult, AgentConfig } from './types';
+import { Action, ExecutionResult, ExecutionLog, AgentConfig } from './types';
 import { logger } from './logger';
 import { safeWrite, safeAppend } from './memory';
 import { injectDisclosure } from './tools/serve';
@@ -6,6 +6,7 @@ import { createCheckpoint } from './tools/checkpoint';
 import { safeFetch } from './tools/web';
 import * as fsTools from './tools/filesystem';
 import * as path from 'path';
+import { exec } from 'child_process';
 
 let config: AgentConfig;
 
@@ -47,6 +48,8 @@ async function executeOne(action: Action): Promise<ExecutionResult> {
       return executeMessage(action);
     case 'fetch':
       return await executeFetch(action);
+    case 'execute':
+      return await executeCommand(action);
     case 'set-schedule':
       return executeSetSchedule(action);
     default:
@@ -148,4 +151,71 @@ function executeSetSchedule(action: Action): ExecutionResult {
   safeWrite('/self/schedule.txt', cron.trim(), 'overwrite');
   logger.info('Schedule updated', { cron: cron.trim() });
   return { action, success: true };
+}
+
+async function executeCommand(action: Action): Promise<ExecutionResult> {
+  const command = action.content;
+  if (!command) {
+    return { action, success: false, error: 'Execute action requires a command' };
+  }
+
+  const timeout = action.timeout || 30000;
+  const workingDir = action.workingDir
+    ? (config.testing ? path.join(config.baseDir, action.workingDir.replace(/^\/+/, '')) : action.workingDir)
+    : (config.testing ? path.join(config.baseDir, 'projects') : '/projects');
+
+  const startTime = Date.now();
+
+  return new Promise((resolve) => {
+    const child = exec(command, {
+      timeout,
+      cwd: workingDir,
+      maxBuffer: 10 * 1024 * 1024,
+      env: { ...process.env },
+    }, (error, stdout, stderr) => {
+      const duration_ms = Date.now() - startTime;
+      const timedOut = error?.killed === true;
+      const exitCode = error ? (error.code ?? null) : 0;
+
+      // Truncate output to 50KB each
+      const maxOutput = 50 * 1024;
+      const truncStdout = stdout.length > maxOutput ? stdout.slice(0, maxOutput) + '\n... [truncated]' : stdout;
+      const truncStderr = stderr.length > maxOutput ? stderr.slice(0, maxOutput) + '\n... [truncated]' : stderr;
+
+      const log: ExecutionLog = {
+        id: `exec-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+        awakening: 0, // Will be set by caller if needed
+        timestamp: new Date().toISOString(),
+        command,
+        workingDir,
+        exitCode: typeof exitCode === 'number' ? exitCode : null,
+        stdout: truncStdout,
+        stderr: truncStderr,
+        duration_ms,
+        timedOut,
+      };
+
+      // Save execution log
+      try {
+        const logDir = path.join(config.baseDir, 'self', 'execution-logs');
+        fsTools.ensureDir(logDir);
+        safeWrite(`/self/execution-logs/${log.id}.json`, JSON.stringify(log, null, 2), 'overwrite');
+      } catch (err) {
+        logger.error('Failed to save execution log', { error: String(err) });
+      }
+
+      logger.info('Execute action completed', {
+        command: command.slice(0, 100),
+        exitCode,
+        duration_ms,
+        timedOut,
+      });
+
+      resolve({
+        action,
+        success: exitCode === 0,
+        error: exitCode !== 0 ? `Exit code ${exitCode}${timedOut ? ' (timed out)' : ''}: ${truncStderr.slice(0, 200)}` : undefined,
+      });
+    });
+  });
 }

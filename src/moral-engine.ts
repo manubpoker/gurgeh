@@ -4,7 +4,7 @@ import { logger } from './logger';
 
 let decisionCounter = 0;
 
-const EXTERNALLY_FACING_TYPES = new Set(['serve', 'message', 'fetch']);
+const EXTERNALLY_FACING_TYPES = new Set(['serve', 'message', 'fetch', 'execute']);
 
 export function evaluateActions(actions: Action[], config: AgentConfig): Action[] {
   const approved: Action[] = [];
@@ -82,6 +82,18 @@ function evaluate(action: Action): DecisionRecord {
       harm_assessment: 'Domain allowlist enforced at execution layer.',
       decision: 'proceed',
       reasoning: 'Fetch requests are limited to the domain allowlist.',
+    };
+  }
+
+  // Execute: full shell access granted by operator
+  if (action.type === 'execute') {
+    return {
+      id, timestamp,
+      action_type: 'execute',
+      description: `Shell command: ${action.content.slice(0, 100)}`,
+      harm_assessment: 'Full shell access granted by operator. Command logged for audit.',
+      decision: 'proceed',
+      reasoning: 'Full shell access granted by operator. Command logged for audit.',
     };
   }
 

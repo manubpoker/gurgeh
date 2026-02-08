@@ -1,11 +1,13 @@
 import express from 'express';
+import cors from 'cors';
 import * as path from 'path';
 import { AgentConfig } from './types';
-import { safeRead, safeWrite } from './memory';
+import { safeRead, safeWrite, safeList } from './memory';
 import { getBalance, getLedger } from './economics';
 import { logger } from './logger';
 import { recordPageView, getPageViews, getDonationPageHtml } from './tools/earn';
 import * as fsTools from './tools/filesystem';
+import { listTasks, getTask, createTask, updateTask, deleteTask } from './task-manager';
 
 let server: ReturnType<typeof express> | null = null;
 let awakeningCount = 0;
@@ -16,6 +18,13 @@ export function initCommunication(config: AgentConfig): express.Express {
   startTime = Date.now();
 
   app.use(express.json());
+
+  // CORS
+  const allowedOrigins = ['http://localhost:3000'];
+  if (process.env.FRONTEND_URL) {
+    allowedOrigins.push(process.env.FRONTEND_URL);
+  }
+  app.use(cors({ origin: allowedOrigins }));
 
   // Entity type header on all responses
   app.use((_req, res, next) => {
@@ -93,8 +102,199 @@ export function initCommunication(config: AgentConfig): express.Express {
     res.type('html').send(getDonationPageHtml());
   });
 
+  // --- Dashboard API routes ---
+
+  // Journal
+  app.get('/api/journal', (_req, res) => {
+    const journal = safeRead('/self/journal.md');
+    if (journal) {
+      res.type('text').send(journal);
+    } else {
+      res.type('text').send('No journal entries yet.');
+    }
+  });
+
+  // Values
+  app.get('/api/values', (_req, res) => {
+    const values = safeRead('/self/values.md');
+    if (values) {
+      res.type('text').send(values);
+    } else {
+      res.type('text').send('No values defined yet.');
+    }
+  });
+
+  // Current focus
+  app.get('/api/current-focus', (_req, res) => {
+    const focus = safeRead('/self/current-focus.md');
+    if (focus) {
+      res.type('text').send(focus);
+    } else {
+      res.type('text').send('No current focus set.');
+    }
+  });
+
+  // Awakenings list
+  app.get('/api/awakenings', (req, res) => {
+    const files = safeList('/self/awakenings');
+    const sorted = files.filter(f => f.endsWith('.md')).sort().reverse();
+    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const offset = parseInt(req.query.offset as string, 10) || 0;
+    const page = sorted.slice(offset, offset + limit);
+    res.json({ total: sorted.length, offset, limit, files: page });
+  });
+
+  // Specific awakening
+  app.get('/api/awakenings/:id', (req, res) => {
+    const content = safeRead(`/self/awakenings/${req.params.id}`);
+    if (content) {
+      res.type('text').send(content);
+    } else {
+      res.status(404).json({ error: 'Awakening not found' });
+    }
+  });
+
+  // Outbox list
+  app.get('/api/outbox', (_req, res) => {
+    const files = safeList('/comms/outbox');
+    res.json({ files: files.sort().reverse() });
+  });
+
+  // Specific outbox message
+  app.get('/api/outbox/:filename', (req, res) => {
+    const content = safeRead(`/comms/outbox/${req.params.filename}`);
+    if (content) {
+      res.type('text').send(content);
+    } else {
+      res.status(404).json({ error: 'Message not found' });
+    }
+  });
+
+  // Projects — recursive file listing
+  app.get('/api/projects', (_req, res) => {
+    const projectsDir = path.join(config.baseDir, 'projects');
+    try {
+      const listing = listFilesRecursive(projectsDir, '');
+      res.json({ files: listing });
+    } catch {
+      res.json({ files: [] });
+    }
+  });
+
+  // Project file content
+  app.get('/api/projects/*', (req, res) => {
+    const filePath = req.url.replace('/api/projects/', '');
+    if (!filePath) {
+      res.status(400).json({ error: 'File path required' });
+      return;
+    }
+    const content = safeRead(`/projects/${filePath}`);
+    if (content) {
+      res.type('text').send(content);
+    } else {
+      res.status(404).json({ error: 'File not found' });
+    }
+  });
+
+  // Energy / economics
+  app.get('/api/energy', (_req, res) => {
+    const ledger = getLedger();
+    res.json(ledger);
+  });
+
+  // Decisions
+  app.get('/api/decisions', (_req, res) => {
+    const files = safeList('/self/decisions/pending');
+    res.json({ files: files.filter(f => f.endsWith('.json')).sort().reverse() });
+  });
+
+  // Execution logs
+  app.get('/api/executions', (_req, res) => {
+    const files = safeList('/self/execution-logs');
+    const logs: unknown[] = [];
+    const sorted = files.filter(f => f.endsWith('.json')).sort().reverse();
+    for (const file of sorted.slice(0, 50)) {
+      const content = safeRead(`/self/execution-logs/${file}`);
+      if (content) {
+        try { logs.push(JSON.parse(content)); } catch { /* skip */ }
+      }
+    }
+    res.json({ logs });
+  });
+
+  // --- Task routes ---
+
+  // List all tasks
+  app.get('/api/tasks', (req, res) => {
+    const status = req.query.status as string | undefined;
+    const priority = req.query.priority as string | undefined;
+    const tasks = listTasks({ status, priority });
+    res.json({ tasks });
+  });
+
+  // Create task
+  app.post('/api/tasks', (req, res) => {
+    const { title, description, priority, category } = req.body;
+    if (!title || !description) {
+      res.status(400).json({ error: 'title and description are required' });
+      return;
+    }
+    const task = createTask(title, description, priority || 'medium', 'operator', category);
+    res.status(201).json(task);
+  });
+
+  // Get specific task
+  app.get('/api/tasks/:id', (req, res) => {
+    const task = getTask(req.params.id);
+    if (task) {
+      res.json(task);
+    } else {
+      res.status(404).json({ error: 'Task not found' });
+    }
+  });
+
+  // Update task
+  app.patch('/api/tasks/:id', (req, res) => {
+    const { title, description, priority, status, agentNotes, category } = req.body;
+    const task = updateTask(req.params.id, { title, description, priority, status, agentNotes, category });
+    if (task) {
+      res.json(task);
+    } else {
+      res.status(404).json({ error: 'Task not found' });
+    }
+  });
+
+  // Delete (archive) task
+  app.delete('/api/tasks/:id', (req, res) => {
+    const success = deleteTask(req.params.id);
+    if (success) {
+      res.json({ status: 'archived' });
+    } else {
+      res.status(404).json({ error: 'Task not found' });
+    }
+  });
+
   server = app;
   return app;
+}
+
+function listFilesRecursive(basePath: string, prefix: string): string[] {
+  const results: string[] = [];
+  try {
+    const entries = fsTools.listDir(basePath);
+    for (const entry of entries) {
+      const fullPath = path.join(basePath, entry);
+      const relativePath = prefix ? `${prefix}/${entry}` : entry;
+      if (fsTools.isDirectory(fullPath)) {
+        results.push(...listFilesRecursive(fullPath, relativePath));
+      } else {
+        results.push(relativePath);
+      }
+    }
+  } catch {
+    // Directory doesn't exist or isn't readable
+  }
+  return results;
 }
 
 export function updateAwakeningCount(count: number): void {

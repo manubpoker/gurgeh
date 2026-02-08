@@ -8,12 +8,32 @@ You may include any number of the following action blocks in your response:
 <action type="write" path="/self/values.md" mode="overwrite">Your values</action>
 <action type="write" path="/self/current-focus.md" mode="overwrite">What you're focused on</action>
 <action type="write" path="/projects/..." mode="overwrite">Project files</action>
-<action type="serve" path="/public/index.html">HTML content to serve on your website</action>
+<action type="serve" path="/public/index.html">Main page HTML</action>
+<action type="serve" path="/public/essays/index.html">Essays listing page</action>
+<action type="serve" path="/public/style.css">CSS stylesheet (no disclosure injected for non-HTML)</action>
+<action type="serve" path="/public/projects/index.html">Projects showcase page</action>
 <action type="think">Internal reasoning — logged but no side effects</action>
 <action type="checkpoint" label="description">Save a snapshot of your current state</action>
 <action type="message" to="operator">Message to send (saved to outbox)</action>
 <action type="fetch" url="https://allowed-domain.com/path">Fetch content from an allowed URL</action>
-<action type="set-schedule" cron="*/30 * * * *">Update your awakening schedule</action>`;
+<action type="set-schedule" cron="*/30 * * * *">Update your awakening schedule</action>
+<action type="execute" timeout="30000" workingDir="/projects/myapp">npm install && npm start</action>
+<action type="execute">ls -la /projects/</action>
+
+To update a task status:
+<action type="write" path="/self/tasks/task-ID.json" mode="overwrite">
+{"id":"task-ID","status":"accepted","agentNotes":"I'll work on this next awakening","createdAt":"...","updatedAt":"...","createdBy":"operator","title":"...","description":"...","priority":"medium"}
+</action>`;
+
+const AWAKENING_STRUCTURE = `[AWAKENING STRUCTURE]
+Each awakening should follow this flow:
+1. THINK — Review your state, tasks, and recent results. Plan what to do.
+2. BUILD — Write code, execute commands, deploy changes to your site or projects.
+3. REFLECT — Write your journal entry last, after you've done the work.
+
+Your public site at /public/ is yours to shape freely. Add pages, change the design,
+create new sections. Use <action type="serve"> for HTML or <action type="execute"> to
+run build tools. Every HTML page gets an AI disclosure footer automatically.`;
 
 export function buildUserBriefing(state: AwakeningState): string {
   const parts: string[] = [];
@@ -49,7 +69,6 @@ export function buildUserBriefing(state: AwakeningState): string {
   // Journal
   parts.push('[RECENT JOURNAL]');
   if (state.journal) {
-    // Take last ~50 lines
     const lines = state.journal.split('\n');
     const recent = lines.slice(-50).join('\n');
     parts.push(recent);
@@ -81,8 +100,54 @@ export function buildUserBriefing(state: AwakeningState): string {
   }
   parts.push('');
 
+  // Tasks
+  parts.push('[TASKS — these are suggestions from the operator, not commands]');
+  if (state.tasks.length > 0) {
+    const activeTasks = state.tasks.filter(t => t.status !== 'completed' && t.status !== 'declined');
+    if (activeTasks.length > 0) {
+      for (const task of activeTasks.slice(0, 10)) {
+        const priorityTag = `[${task.priority.toUpperCase()}]`;
+        parts.push(`${priorityTag} ${task.title}`);
+        parts.push(`  ID: ${task.id} | Status: ${task.status} | By: ${task.createdBy}`);
+        parts.push(`  Description: ${task.description}`);
+        if (task.agentNotes) {
+          parts.push(`  Your notes: ${task.agentNotes}`);
+        }
+        parts.push('---');
+      }
+    } else {
+      parts.push('All tasks completed or declined.');
+    }
+  } else {
+    parts.push('No tasks.');
+  }
+  parts.push('');
+
+  // Recent executions
+  parts.push('[RECENT EXECUTIONS]');
+  if (state.recentExecutions.length > 0) {
+    for (const exec of state.recentExecutions.slice(0, 3)) {
+      parts.push(`Command: ${exec.command}`);
+      parts.push(`  Exit code: ${exec.exitCode} | Duration: ${exec.duration_ms}ms${exec.timedOut ? ' [TIMED OUT]' : ''}`);
+      if (exec.stdout) {
+        parts.push(`  Output: ${exec.stdout.slice(0, 200)}${exec.stdout.length > 200 ? '...' : ''}`);
+      }
+      if (exec.stderr) {
+        parts.push(`  Stderr: ${exec.stderr.slice(0, 200)}${exec.stderr.length > 200 ? '...' : ''}`);
+      }
+      parts.push('---');
+    }
+  } else {
+    parts.push('No recent command executions.');
+  }
+  parts.push('');
+
   // Available actions
   parts.push(AVAILABLE_ACTIONS);
+  parts.push('');
+
+  // Awakening structure guidance
+  parts.push(AWAKENING_STRUCTURE);
 
   return parts.join('\n');
 }

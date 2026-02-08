@@ -145,6 +145,7 @@ export function safeList(dir: string): string[] {
 
 export function initDirectories(): void {
   const dirs = ['self', 'self/logs', 'self/awakenings', 'self/decisions', 'self/decisions/pending',
+    'self/tasks', 'self/execution-logs',
     'projects', 'income', 'comms', 'comms/inbox', 'comms/outbox', 'public'];
 
   for (const dir of dirs) {
