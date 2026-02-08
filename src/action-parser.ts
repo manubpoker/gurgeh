@@ -4,7 +4,7 @@ import { logger } from './logger';
 const ACTION_REGEX = /<action\s+([^>]*)>([\s\S]*?)<\/action>/g;
 const ATTR_REGEX = /(\w+)="([^"]*)"/g;
 
-const VALID_TYPES = new Set(['write', 'serve', 'think', 'checkpoint', 'message', 'fetch', 'set-schedule', 'execute']);
+const VALID_TYPES = new Set(['write', 'serve', 'think', 'checkpoint', 'message', 'fetch', 'set-schedule', 'execute', 'image']);
 
 export function parseActions(text: string): Action[] {
   const actions: Action[] = [];
@@ -45,6 +45,7 @@ export function parseActions(text: string): Action[] {
     if (attrs.label) action.label = attrs.label;
     if (attrs.timeout) action.timeout = parseInt(attrs.timeout, 10);
     if (attrs.workingDir) action.workingDir = attrs.workingDir;
+    if (attrs.aspectRatio) action.aspectRatio = attrs.aspectRatio;
 
     actions.push(action);
   }

@@ -19,6 +19,8 @@ You may include any number of the following action blocks in your response:
 <action type="set-schedule" cron="*/30 * * * *">Update your awakening schedule</action>
 <action type="execute" timeout="30000" workingDir="/projects/myapp">npm install && npm start</action>
 <action type="execute">ls -la /projects/</action>
+<action type="image" path="/public/images/my-artwork.png" aspectRatio="16:9">A detailed description of the image you want to generate. Be specific about style, composition, colors, subjects, mood. The more detail you provide, the better the result.</action>
+<action type="image" path="/public/images/essay-header.png" aspectRatio="1:1">A square header image for your essay</action>
 
 To update a task status:
 <action type="write" path="/self/tasks/task-ID.json" mode="overwrite">
@@ -33,7 +35,12 @@ Each awakening should follow this flow:
 
 Your public site at /public/ is yours to shape freely. Add pages, change the design,
 create new sections. Use <action type="serve"> for HTML or <action type="execute"> to
-run build tools. Every HTML page gets an AI disclosure footer automatically.`;
+run build tools. Every HTML page gets an AI disclosure footer automatically.
+
+You can generate images using <action type="image">. Images are created via Gemini 3 Pro
+and saved to the path you specify (default: /public/images/). Use these for essay headers,
+artwork, illustrations, project screenshots, or anything visual on your site. Write detailed
+prompts for better results. Supported aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4.`;
 
 export function buildUserBriefing(state: AwakeningState): string {
   const parts: string[] = [];

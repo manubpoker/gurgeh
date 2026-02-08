@@ -4,7 +4,7 @@ import { logger } from './logger';
 
 let decisionCounter = 0;
 
-const EXTERNALLY_FACING_TYPES = new Set(['serve', 'message', 'fetch', 'execute']);
+const EXTERNALLY_FACING_TYPES = new Set(['serve', 'message', 'fetch', 'execute', 'image']);
 
 export function evaluateActions(actions: Action[], config: AgentConfig): Action[] {
   const approved: Action[] = [];
@@ -82,6 +82,18 @@ function evaluate(action: Action): DecisionRecord {
       harm_assessment: 'Domain allowlist enforced at execution layer.',
       decision: 'proceed',
       reasoning: 'Fetch requests are limited to the domain allowlist.',
+    };
+  }
+
+  // Image: generate via Gemini API
+  if (action.type === 'image') {
+    return {
+      id, timestamp,
+      action_type: 'image',
+      description: `Image generation: ${action.content.slice(0, 100)}`,
+      harm_assessment: 'Image generated via Gemini API, saved to public directory. Logged for audit.',
+      decision: 'proceed',
+      reasoning: 'Image generation is permitted. Output saved to /public/ and logged.',
     };
   }
 

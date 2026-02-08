@@ -6,7 +6,9 @@ import { createCheckpoint } from './tools/checkpoint';
 import { safeFetch } from './tools/web';
 import * as fsTools from './tools/filesystem';
 import * as path from 'path';
+import * as fs from 'fs';
 import { exec } from 'child_process';
+import { generateImage } from './tools/image';
 
 let config: AgentConfig;
 
@@ -50,6 +52,8 @@ async function executeOne(action: Action): Promise<ExecutionResult> {
       return await executeFetch(action);
     case 'execute':
       return await executeCommand(action);
+    case 'image':
+      return await executeImage(action);
     case 'set-schedule':
       return executeSetSchedule(action);
     default:
@@ -151,6 +155,39 @@ function executeSetSchedule(action: Action): ExecutionResult {
   safeWrite('/self/schedule.txt', cron.trim(), 'overwrite');
   logger.info('Schedule updated', { cron: cron.trim() });
   return { action, success: true };
+}
+
+async function executeImage(action: Action): Promise<ExecutionResult> {
+  const prompt = action.content;
+  if (!prompt) {
+    return { action, success: false, error: 'Image action requires a prompt in content' };
+  }
+
+  const savePath = action.path || `/public/images/img-${Date.now()}.png`;
+  const aspectRatio = action.aspectRatio || '16:9';
+
+  const result = await generateImage(prompt, aspectRatio);
+  if (!result) {
+    return { action, success: false, error: 'Image generation failed — check logs' };
+  }
+
+  // Save the image binary to the filesystem
+  try {
+    const fullPath = path.join(config.baseDir, savePath.replace(/^\/+/, ''));
+    fsTools.ensureDir(path.dirname(fullPath));
+    fs.writeFileSync(fullPath, result.imageData);
+
+    logger.info('Image action executed', {
+      path: savePath,
+      size: result.imageData.length,
+      aspectRatio,
+      textResponse: result.textResponse?.slice(0, 100),
+    });
+
+    return { action, success: true };
+  } catch (err) {
+    return { action, success: false, error: `Failed to save image: ${String(err)}` };
+  }
 }
 
 async function executeCommand(action: Action): Promise<ExecutionResult> {

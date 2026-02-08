@@ -10,7 +10,7 @@ export interface AgentConfig {
 }
 
 export interface Action {
-  type: 'write' | 'serve' | 'think' | 'checkpoint' | 'message' | 'fetch' | 'set-schedule' | 'execute';
+  type: 'write' | 'serve' | 'think' | 'checkpoint' | 'message' | 'fetch' | 'set-schedule' | 'execute' | 'image';
   path?: string;
   mode?: 'append' | 'overwrite';
   content: string;
@@ -20,6 +20,7 @@ export interface Action {
   label?: string;
   timeout?: number;
   workingDir?: string;
+  aspectRatio?: string;
 }
 
 export interface AwakeningState {
