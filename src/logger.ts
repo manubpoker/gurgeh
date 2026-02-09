@@ -9,8 +9,11 @@ const LEVEL_PRIORITY: Record<LogLevel, number> = {
   ERROR: 3,
 };
 
+const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB
+
 let logFilePath: string | null = null;
 let minLevel: LogLevel = 'INFO';
+let writesSinceRotationCheck = 0;
 
 export function initLogger(baseDir: string, level: LogLevel = 'INFO'): void {
   minLevel = level;
@@ -18,6 +21,23 @@ export function initLogger(baseDir: string, level: LogLevel = 'INFO'): void {
   const dir = path.dirname(logFilePath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
+function rotateIfNeeded(): void {
+  if (!logFilePath) return;
+  try {
+    const stats = fs.statSync(logFilePath);
+    if (stats.size > MAX_LOG_SIZE) {
+      const rotatedPath = logFilePath + '.1';
+      // Remove old rotated log if it exists
+      if (fs.existsSync(rotatedPath)) {
+        fs.unlinkSync(rotatedPath);
+      }
+      fs.renameSync(logFilePath, rotatedPath);
+    }
+  } catch {
+    // File may not exist yet
   }
 }
 
@@ -36,6 +56,12 @@ function log(level: LogLevel, message: string, data?: Record<string, unknown>): 
 
   if (logFilePath) {
     try {
+      // Check rotation every 100 writes
+      writesSinceRotationCheck++;
+      if (writesSinceRotationCheck >= 100) {
+        writesSinceRotationCheck = 0;
+        rotateIfNeeded();
+      }
       fs.appendFileSync(logFilePath, line + '\n');
     } catch {
       // If we can't write logs, we still continue

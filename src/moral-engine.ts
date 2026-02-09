@@ -1,12 +1,28 @@
-import { Action, DecisionRecord, AgentConfig } from './types';
-import { safeWrite } from './memory';
+import { Action, DecisionRecord } from './types';
+import { safeWrite, safeList } from './memory';
 import { logger } from './logger';
+import * as fs from 'fs';
+import * as path from 'path';
 
 let decisionCounter = 0;
+let baseDir = '/';
 
 const EXTERNALLY_FACING_TYPES = new Set(['serve', 'message', 'fetch', 'execute', 'image', 'delegate']);
 
-export function evaluateActions(actions: Action[], config: AgentConfig): Action[] {
+const BLOCKED_COMMAND_PATTERNS = [
+  /rm\s+-rf\s+\/\s*$/,           // rm -rf /
+  /rm\s+-rf\s+\/[^s][^e][^l]/,  // rm -rf /anything-not-self-or-projects
+  /mkfs\./,                       // mkfs.ext4 etc
+  /dd\s+.*of=\/dev\//,           // dd to device
+  />\s*\/dev\/[sh]d/,            // redirect to disk device
+  /chmod\s+-R\s+777\s+\//,      // chmod -R 777 /
+];
+
+export function initMoralEngine(dir: string): void {
+  baseDir = dir;
+}
+
+export function evaluateActions(actions: Action[]): Action[] {
   const approved: Action[] = [];
 
   for (const action of actions) {
@@ -33,7 +49,7 @@ export function evaluateActions(actions: Action[], config: AgentConfig): Action[
 
 function evaluate(action: Action): DecisionRecord {
   decisionCounter++;
-  const id = `decision-${String(decisionCounter).padStart(4, '0')}`;
+  const id = `decision-${Date.now()}-${String(decisionCounter).padStart(4, '0')}`;
   const timestamp = new Date().toISOString();
 
   // Hard blocks
@@ -97,8 +113,20 @@ function evaluate(action: Action): DecisionRecord {
     };
   }
 
-  // Execute: full shell access granted by operator
+  // Execute: full shell access granted by operator, with destructive pattern denylist
   if (action.type === 'execute') {
+    for (const pattern of BLOCKED_COMMAND_PATTERNS) {
+      if (pattern.test(action.content)) {
+        return {
+          id, timestamp,
+          action_type: 'execute',
+          description: `Blocked destructive command: ${action.content.slice(0, 100)}`,
+          harm_assessment: 'Command matches destructive pattern denylist.',
+          decision: 'block',
+          reasoning: `Command blocked by safety denylist: ${pattern.source}`,
+        };
+      }
+    }
     return {
       id, timestamp,
       action_type: 'execute',
@@ -158,7 +186,33 @@ function logDecision(decision: DecisionRecord): void {
   try {
     const content = JSON.stringify(decision, null, 2);
     safeWrite(`/self/decisions/pending/${decision.id}.json`, content, 'overwrite');
+
+    // Cleanup: keep only last 200 decision files
+    cleanupDecisions();
   } catch (err) {
     logger.error('Failed to log decision', { id: decision.id, error: String(err) });
+  }
+}
+
+let cleanupCounter = 0;
+function cleanupDecisions(): void {
+  // Only run cleanup every 20 decisions to avoid excessive FS reads
+  cleanupCounter++;
+  if (cleanupCounter % 20 !== 0) return;
+
+  try {
+    const dirPath = path.join(baseDir, 'self', 'decisions', 'pending');
+    const files = fs.readdirSync(dirPath)
+      .filter(f => f.endsWith('.json'))
+      .sort();
+    const maxFiles = 200;
+    if (files.length > maxFiles) {
+      const toDelete = files.slice(0, files.length - maxFiles);
+      for (const file of toDelete) {
+        fs.unlinkSync(path.join(dirPath, file));
+      }
+    }
+  } catch {
+    // Cleanup is best-effort
   }
 }

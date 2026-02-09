@@ -4,6 +4,9 @@ import { safeRead, safeList } from './memory';
 import { recordUsage } from './economics';
 import { logger } from './logger';
 
+// Prefixes that sub-agents are allowed to read
+const SUB_AGENT_READ_PREFIXES = ['/public/', '/self/', '/projects/', '/comms/'];
+
 let client: Anthropic | null = null;
 let config: AgentConfig;
 
@@ -38,13 +41,25 @@ const TOOLS: Anthropic.Tool[] = [
   },
 ];
 
+function isAllowedPath(p: string): boolean {
+  const normalized = '/' + p.replace(/\\/g, '/').replace(/^\/+/, '');
+  if (normalized.includes('..')) return false;
+  return SUB_AGENT_READ_PREFIXES.some(prefix => normalized.startsWith(prefix));
+}
+
 function executeTool(name: string, input: Record<string, string>): string {
   switch (name) {
     case 'read_file': {
+      if (!isAllowedPath(input.path)) {
+        return `Access denied: sub-agents can only read from ${SUB_AGENT_READ_PREFIXES.join(', ')}`;
+      }
       const content = safeRead(input.path);
       return content || 'File not found or empty.';
     }
     case 'list_files': {
+      if (!isAllowedPath(input.directory)) {
+        return `Access denied: sub-agents can only list from ${SUB_AGENT_READ_PREFIXES.join(', ')}`;
+      }
       const entries = safeList(input.directory);
       return entries.length > 0 ? entries.join('\n') : 'Directory empty or not found.';
     }
@@ -84,6 +99,46 @@ export interface DelegationResult {
   usage: PromptUsage;
 }
 
+async function callWithRetry(
+  apiClient: Anthropic,
+  systemPrompt: string,
+  messages: Anthropic.MessageParam[],
+  turn: number,
+): Promise<Anthropic.Message | null> {
+  const maxRetries = 2;
+  const backoffMs = [2000, 4000];
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await apiClient.messages.create({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 8192,
+        system: systemPrompt,
+        messages,
+        tools: TOOLS,
+      });
+    } catch (err: unknown) {
+      const error = err as { status?: number; message?: string };
+
+      if (attempt < maxRetries && (error.status === 429 || error.status === 529 || (error.status && error.status >= 500))) {
+        logger.warn(`Swarm API retryable error (${error.status}), attempt ${attempt + 1}/${maxRetries + 1}`, { turn });
+        await new Promise(resolve => setTimeout(resolve, backoffMs[attempt]));
+        continue;
+      }
+
+      logger.error('Swarm API call failed', {
+        turn,
+        attempt: attempt + 1,
+        status: error.status,
+        error: error.message || String(err),
+      });
+      return null;
+    }
+  }
+
+  return null;
+}
+
 async function runAgentLoop(
   systemPrompt: string,
   userPrompt: string,
@@ -104,24 +159,8 @@ async function runAgentLoop(
   while (turns < maxTurns) {
     turns++;
 
-    let response: Anthropic.Message;
-    try {
-      response = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
-        system: systemPrompt,
-        messages,
-        tools: TOOLS,
-      });
-    } catch (err: unknown) {
-      const error = err as { status?: number; message?: string };
-      logger.error('Swarm API call failed', {
-        turn: turns,
-        status: error.status,
-        error: error.message || String(err),
-      });
-      return null;
-    }
+    const response = await callWithRetry(client, systemPrompt, messages, turns);
+    if (!response) return null;
 
     // Accumulate usage
     accumulatedUsage.input_tokens += response.usage.input_tokens;
@@ -216,45 +255,3 @@ export async function executeDelegation(
   return result;
 }
 
-export async function executeDelegations(
-  actions: Action[],
-  awakeningNumber: number,
-): Promise<Map<Action, DelegationResult | null>> {
-  const results = new Map<Action, DelegationResult | null>();
-  let accumulatedCost = 0;
-
-  // Process in batches of maxConcurrent
-  for (let i = 0; i < actions.length; i += config.swarmMaxConcurrent) {
-    const batch = actions.slice(i, i + config.swarmMaxConcurrent);
-
-    // Budget guard — check before starting batch
-    if (accumulatedCost >= config.swarmMaxBudget) {
-      logger.warn('Swarm budget exhausted, skipping remaining delegations', {
-        spent: accumulatedCost.toFixed(4),
-        budget: config.swarmMaxBudget,
-        remaining: actions.length - i,
-      });
-      for (const action of actions.slice(i)) {
-        results.set(action, null);
-      }
-      break;
-    }
-
-    const batchResults = await Promise.all(
-      batch.map(action => executeDelegation(action, awakeningNumber)),
-    );
-
-    for (let j = 0; j < batch.length; j++) {
-      results.set(batch[j], batchResults[j]);
-      if (batchResults[j]) {
-        const usage = batchResults[j]!.usage;
-        const rates = { input: 0.80, output: 4.00 };
-        const cost = (usage.input_tokens / 1_000_000) * rates.input
-                   + (usage.output_tokens / 1_000_000) * rates.output;
-        accumulatedCost += cost;
-      }
-    }
-  }
-
-  return results;
-}

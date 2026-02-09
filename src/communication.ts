@@ -92,8 +92,9 @@ export function initCommunication(config: AgentConfig): express.Express {
       return;
     }
 
-    const filename = `msg-${Date.now()}-from-${String(from).replace(/[^a-zA-Z0-9]/g, '_')}.md`;
-    const content = `From: ${from}\nReceived: ${new Date().toISOString()}\n\n${message}`;
+    const safeFrom = String(from).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
+    const filename = `msg-${Date.now()}-from-${safeFrom}.md`;
+    const content = `From: ${safeFrom}\nReceived: ${new Date().toISOString()}\n\n${message}`;
 
     try {
       safeWrite(`/comms/inbox/${filename}`, content, 'overwrite');
@@ -384,7 +385,14 @@ export function updateAwakeningCount(count: number): void {
 }
 
 export function startServer(app: express.Express, port: number): void {
-  app.listen(port, () => {
+  const srv = app.listen(port, () => {
     logger.info(`HTTP server listening on port ${port}`);
+  });
+  srv.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error(`Port ${port} already in use — HTTP server not started. Agent continues without HTTP.`, { port });
+    } else {
+      logger.error('HTTP server error', { error: String(err), code: err.code });
+    }
   });
 }

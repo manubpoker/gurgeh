@@ -1,6 +1,6 @@
 import { Action, ExecutionResult, ExecutionLog, AgentConfig } from './types';
 import { logger } from './logger';
-import { safeWrite, safeAppend } from './memory';
+import { safeWrite, safeAppend, validatePath } from './memory';
 import { injectDisclosure } from './tools/serve';
 import { createCheckpoint } from './tools/checkpoint';
 import { safeFetch } from './tools/web';
@@ -143,6 +143,9 @@ async function executeFetch(action: Action): Promise<ExecutionResult> {
     const fullPath = path.join(config.baseDir, 'self', 'fetch-results');
     fsTools.ensureDir(fullPath);
     safeWrite(fetchPath, content, 'overwrite');
+
+    // Cleanup: keep only last 50 fetch results
+    cleanupDir(fullPath, 50, '.txt');
   } catch (err) {
     logger.warn('Could not save fetch result', { error: String(err) });
   }
@@ -176,9 +179,9 @@ async function executeImage(action: Action): Promise<ExecutionResult> {
     return { action, success: false, error: 'Image generation failed — check logs' };
   }
 
-  // Save the image binary to the filesystem
+  // Save the image binary to the filesystem (through path validation)
   try {
-    const fullPath = path.join(config.baseDir, savePath.replace(/^\/+/, ''));
+    const fullPath = validatePath(savePath);
     fsTools.ensureDir(path.dirname(fullPath));
     fs.writeFileSync(fullPath, result.imageData);
 
@@ -226,6 +229,22 @@ async function executeDelegate(action: Action): Promise<ExecutionResult> {
   return { action, success: true };
 }
 
+function cleanupDir(dirPath: string, maxFiles: number, ext: string): void {
+  try {
+    const files = fs.readdirSync(dirPath)
+      .filter(f => f.endsWith(ext))
+      .sort(); // Sorted ascending by name (timestamps sort correctly)
+    if (files.length > maxFiles) {
+      const toDelete = files.slice(0, files.length - maxFiles);
+      for (const file of toDelete) {
+        fs.unlinkSync(path.join(dirPath, file));
+      }
+    }
+  } catch {
+    // Cleanup is best-effort
+  }
+}
+
 async function executeCommand(action: Action): Promise<ExecutionResult> {
   const command = action.content;
   if (!command) {
@@ -257,7 +276,7 @@ async function executeCommand(action: Action): Promise<ExecutionResult> {
 
       const log: ExecutionLog = {
         id: `exec-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
-        awakening: 0, // Will be set by caller if needed
+        awakening: currentAwakeningNumber,
         timestamp: new Date().toISOString(),
         command,
         workingDir,
@@ -273,6 +292,9 @@ async function executeCommand(action: Action): Promise<ExecutionResult> {
         const logDir = path.join(config.baseDir, 'self', 'execution-logs');
         fsTools.ensureDir(logDir);
         safeWrite(`/self/execution-logs/${log.id}.json`, JSON.stringify(log, null, 2), 'overwrite');
+
+        // Cleanup: keep only last 100 execution logs
+        cleanupDir(logDir, 100, '.json');
       } catch (err) {
         logger.error('Failed to save execution log', { error: String(err) });
       }

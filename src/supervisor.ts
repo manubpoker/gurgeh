@@ -11,7 +11,7 @@ import { initSwarm } from './swarm';
 import { gatherContext, writeAwakeningLog, markInboxRead } from './identity';
 import { buildUserBriefing, truncateBriefing, estimateTokens } from './prompt-builder';
 import { parseActions } from './action-parser';
-import { evaluateActions } from './moral-engine';
+import { evaluateActions, initMoralEngine } from './moral-engine';
 import { createCheckpoint, initCheckpoint } from './tools/checkpoint';
 import { loadPageViews, savePageViews } from './tools/earn';
 import * as fsTools from './tools/filesystem';
@@ -41,6 +41,7 @@ export async function startSupervisor(cfg: AgentConfig): Promise<void> {
   initializeLedger(config.initialBudget);
   initExecutor(config);
   initSwarm(config);
+  initMoralEngine(config.baseDir);
   initCheckpoint(config.spriteName);
   loadPageViews(config.baseDir);
 
@@ -168,7 +169,7 @@ async function runAwakening(): Promise<void> {
     logger.info('Actions parsed', { count: actions.length, types: actions.map(a => a.type) });
 
     // 6. Moral evaluation
-    const approvedActions = evaluateActions(actions, config);
+    const approvedActions = evaluateActions(actions);
     if (approvedActions.length < actions.length) {
       logger.warn('Some actions were blocked by moral engine', {
         total: actions.length,
@@ -200,9 +201,11 @@ async function runAwakening(): Promise<void> {
 
     writeAwakeningLog(config, state.awakeningNumber, summary);
 
-    // Re-read schedule in case the agent changed it
-    const newSchedule = safeRead('/self/schedule.txt');
-    if (newSchedule) {
+    // Re-read schedule in case the agent changed it during this awakening
+    // (scheduleAwakenings is also called after runAwakening in the startup flow,
+    // but this handles mid-run schedule changes)
+    const setScheduleAction = approvedActions.find(a => a.type === 'set-schedule');
+    if (setScheduleAction) {
       scheduleAwakenings();
     }
 
