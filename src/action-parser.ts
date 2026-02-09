@@ -2,7 +2,7 @@ import { Action } from './types';
 import { logger } from './logger';
 
 const ACTION_REGEX = /<action\s+([^>]*)>([\s\S]*?)<\/action>/g;
-const ATTR_REGEX = /(\w+)="([^"]*)"/g;
+const ATTR_REGEX = /([\w-]+)="([^"]*)"/g;
 
 const VALID_TYPES = new Set(['write', 'serve', 'think', 'checkpoint', 'message', 'fetch', 'set-schedule', 'execute', 'image', 'delegate']);
 
