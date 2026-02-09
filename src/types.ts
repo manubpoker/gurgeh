@@ -35,6 +35,9 @@ export interface AwakeningState {
   energy: EnergyLedger;
   recentExecutions: ExecutionLog[];
   tasks: Task[];
+  siteManifest: string | null;
+  workHistory: string | null;
+  memorySummary: string | null;
 }
 
 export interface ExecutionLog {
@@ -69,6 +72,7 @@ export interface InboxMessage {
   from: string;
   message: string;
   receivedAt: string;
+  isNew: boolean;
 }
 
 export interface EnergyLedger {

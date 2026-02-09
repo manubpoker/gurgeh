@@ -1,13 +1,13 @@
 import * as cron from 'node-cron';
 import * as path from 'path';
-import { AgentConfig } from './types';
+import { AgentConfig, ExecutionResult } from './types';
 import { logger } from './logger';
-import { initMemory, initDirectories, safeRead } from './memory';
+import { initMemory, initDirectories, safeRead, safeWrite } from './memory';
 import { initReasoning, isReasoningAvailable, reason } from './reasoning';
 import { initEconomics, initializeLedger, recordUsage, hasBudget, getLedger } from './economics';
 import { initCommunication, startServer, updateAwakeningCount, setTriggerAwakening, updateScheduleInfo } from './communication';
 import { initExecutor, executeActions } from './action-executor';
-import { gatherContext, writeAwakeningLog } from './identity';
+import { gatherContext, writeAwakeningLog, markInboxRead } from './identity';
 import { buildUserBriefing, truncateBriefing, estimateTokens } from './prompt-builder';
 import { parseActions } from './action-parser';
 import { evaluateActions } from './moral-engine';
@@ -179,6 +179,12 @@ async function runAwakening(): Promise<void> {
     const successes = results.filter(r => r.success).length;
     const failures = results.filter(r => !r.success).length;
 
+    // 7.5. Mark inbox messages as read
+    markInboxRead(state.inbox, state.awakeningNumber);
+
+    // 7.6. Build and append work history
+    appendWorkHistory(state.awakeningNumber, state.timestamp, results);
+
     // 8. Write awakening log
     const summary = [
       `Actions: ${approvedActions.length} attempted, ${successes} succeeded, ${failures} failed`,
@@ -211,5 +217,72 @@ async function runAwakening(): Promise<void> {
     logger.error('Awakening cycle error', { error: String(err), stack: (err as Error).stack });
   } finally {
     isRunning = false;
+  }
+}
+
+function appendWorkHistory(awakeningNumber: number, timestamp: string, results: ExecutionResult[]): void {
+  const successfulResults = results.filter(r => r.success);
+  if (successfulResults.length === 0) return;
+
+  const lines: string[] = [];
+  const datePart = timestamp.slice(0, 10);
+  lines.push(`## Awakening #${awakeningNumber} (${datePart})`);
+
+  for (const r of successfulResults) {
+    const action = r.action;
+    switch (action.type) {
+      case 'serve':
+        lines.push(`- PUBLISHED: ${action.path}`);
+        break;
+      case 'write':
+        if (action.path?.startsWith('/self/tasks/')) {
+          lines.push(`- TASK UPDATE: ${action.path}`);
+        } else if (action.path?.startsWith('/public/')) {
+          lines.push(`- PUBLISHED: ${action.path}`);
+        } else if (action.path) {
+          lines.push(`- WROTE: ${action.path}`);
+        }
+        break;
+      case 'image':
+        lines.push(`- GENERATED IMAGE: ${action.path}`);
+        break;
+      case 'execute':
+        lines.push(`- EXECUTED: ${action.content.slice(0, 80)}`);
+        break;
+      case 'message':
+        lines.push(`- SENT MESSAGE: to ${action.to || 'operator'}`);
+        break;
+      case 'fetch':
+        lines.push(`- FETCHED: ${action.url}`);
+        break;
+      case 'set-schedule':
+        lines.push(`- SCHEDULE: updated to ${action.cron || action.content}`);
+        break;
+      // think, checkpoint — skip, not visible work
+    }
+  }
+
+  // Only write if there are meaningful entries (beyond the header)
+  if (lines.length <= 1) return;
+
+  lines.push('');
+
+  try {
+    // Read existing history to enforce cap
+    const existing = safeRead('/self/work-history.md') || '';
+    const existingEntries = existing.split(/(?=^## Awakening)/m).filter(e => e.trim());
+
+    // Cap at 50 entries — trim oldest
+    const MAX_ENTRIES = 50;
+    let allEntries: string[];
+    if (existingEntries.length >= MAX_ENTRIES) {
+      allEntries = [...existingEntries.slice(existingEntries.length - MAX_ENTRIES + 1), lines.join('\n')];
+    } else {
+      allEntries = [...existingEntries, lines.join('\n')];
+    }
+
+    safeWrite('/self/work-history.md', allEntries.join('\n'), 'overwrite');
+  } catch (err) {
+    logger.error('Failed to append work history', { error: String(err) });
   }
 }
