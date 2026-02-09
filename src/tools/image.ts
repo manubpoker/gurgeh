@@ -1,6 +1,5 @@
 import { logger } from '../logger';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const GEMINI_MODEL = 'gemini-3-pro-image-preview';
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
@@ -14,7 +13,8 @@ export async function generateImage(
   prompt: string,
   aspectRatio: string = '16:9'
 ): Promise<ImageResult | null> {
-  if (!GEMINI_API_KEY) {
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  if (!apiKey) {
     logger.error('GEMINI_API_KEY not set — image generation unavailable');
     return null;
   }
@@ -28,7 +28,7 @@ export async function generateImage(
   };
 
   try {
-    const response = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+    const response = await fetch(`${GEMINI_URL}?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
