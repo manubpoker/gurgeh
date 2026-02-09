@@ -190,6 +190,16 @@ export function initCommunication(config: AgentConfig): express.Express {
     }
   });
 
+  // Work history
+  app.get('/api/work-history', (_req, res) => {
+    const history = safeRead('/self/work-history.md');
+    if (history) {
+      res.type('text').send(history);
+    } else {
+      res.type('text').send('');
+    }
+  });
+
   // Outbox list
   app.get('/api/outbox', (_req, res) => {
     const files = safeList('/comms/outbox');
