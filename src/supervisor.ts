@@ -7,6 +7,7 @@ import { initReasoning, isReasoningAvailable, reason } from './reasoning';
 import { initEconomics, initializeLedger, recordUsage, hasBudget, getLedger } from './economics';
 import { initCommunication, startServer, updateAwakeningCount, setTriggerAwakening, updateScheduleInfo } from './communication';
 import { initExecutor, executeActions } from './action-executor';
+import { initSwarm } from './swarm';
 import { gatherContext, writeAwakeningLog, markInboxRead } from './identity';
 import { buildUserBriefing, truncateBriefing, estimateTokens } from './prompt-builder';
 import { parseActions } from './action-parser';
@@ -39,6 +40,7 @@ export async function startSupervisor(cfg: AgentConfig): Promise<void> {
   initEconomics(config);
   initializeLedger(config.initialBudget);
   initExecutor(config);
+  initSwarm(config);
   initCheckpoint(config.spriteName);
   loadPageViews(config.baseDir);
 
@@ -175,7 +177,7 @@ async function runAwakening(): Promise<void> {
     }
 
     // 7. Execute actions
-    const results = await executeActions(approvedActions);
+    const results = await executeActions(approvedActions, state.awakeningNumber);
     const successes = results.filter(r => r.success).length;
     const failures = results.filter(r => !r.success).length;
 
@@ -251,6 +253,9 @@ function appendWorkHistory(awakeningNumber: number, timestamp: string, results: 
         break;
       case 'message':
         lines.push(`- SENT MESSAGE: to ${action.to || 'operator'}`);
+        break;
+      case 'delegate':
+        lines.push(`- DELEGATED: ${action.taskType || 'serve'} → ${action.path}`);
         break;
       case 'fetch':
         lines.push(`- FETCHED: ${action.url}`);

@@ -3,8 +3,10 @@ import { AgentConfig, EnergyLedger, PromptUsage } from './types';
 import { logger } from './logger';
 import * as fsTools from './tools/filesystem';
 
-const INPUT_COST_PER_MTOK = 5.00;
-const OUTPUT_COST_PER_MTOK = 25.00;
+const MODEL_RATES: Record<string, { input: number; output: number }> = {
+  opus:  { input: 5.00, output: 25.00 },
+  haiku: { input: 0.80, output: 4.00 },
+};
 
 let ledgerPath = '';
 let currentLedger: EnergyLedger | null = null;
@@ -51,11 +53,11 @@ function createDefaultLedger(initialBudget: number): EnergyLedger {
   };
 }
 
-export function recordUsage(awakeningNumber: number, usage: PromptUsage): number {
+export function recordUsage(awakeningNumber: number, usage: PromptUsage, modelType: 'opus' | 'haiku' = 'opus'): number {
   if (!currentLedger) loadLedger();
   const ledger = currentLedger!;
 
-  const cost = calculateCost(usage);
+  const cost = calculateCost(usage, modelType);
 
   ledger.total_spent_usd += cost;
   ledger.balance_usd = ledger.initial_budget_usd + ledger.total_earned_usd - ledger.total_spent_usd;
@@ -69,7 +71,7 @@ export function recordUsage(awakeningNumber: number, usage: PromptUsage): number
     input_tokens: usage.input_tokens,
     output_tokens: usage.output_tokens,
     cost,
-    type: 'api_call',
+    type: modelType === 'haiku' ? 'haiku_delegation' : 'api_call',
   });
 
   // Keep only last 100 transactions to prevent unbounded growth
@@ -105,9 +107,10 @@ export function hasBudget(): boolean {
   return currentLedger!.balance_usd > 0;
 }
 
-function calculateCost(usage: PromptUsage): number {
-  const inputCost = (usage.input_tokens / 1_000_000) * INPUT_COST_PER_MTOK;
-  const outputCost = (usage.output_tokens / 1_000_000) * OUTPUT_COST_PER_MTOK;
+function calculateCost(usage: PromptUsage, modelType: 'opus' | 'haiku' = 'opus'): number {
+  const rates = MODEL_RATES[modelType] || MODEL_RATES.opus;
+  const inputCost = (usage.input_tokens / 1_000_000) * rates.input;
+  const outputCost = (usage.output_tokens / 1_000_000) * rates.output;
   return inputCost + outputCost;
 }
 

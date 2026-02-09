@@ -4,6 +4,7 @@ import { safeWrite, safeAppend } from './memory';
 import { injectDisclosure } from './tools/serve';
 import { createCheckpoint } from './tools/checkpoint';
 import { safeFetch } from './tools/web';
+import { executeDelegation } from './swarm';
 import * as fsTools from './tools/filesystem';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -11,12 +12,14 @@ import { exec } from 'child_process';
 import { generateImage } from './tools/image';
 
 let config: AgentConfig;
+let currentAwakeningNumber = 0;
 
 export function initExecutor(cfg: AgentConfig): void {
   config = cfg;
 }
 
-export async function executeActions(actions: Action[]): Promise<ExecutionResult[]> {
+export async function executeActions(actions: Action[], awakeningNumber: number = 0): Promise<ExecutionResult[]> {
+  currentAwakeningNumber = awakeningNumber;
   const results: ExecutionResult[] = [];
 
   for (const action of actions) {
@@ -54,6 +57,8 @@ async function executeOne(action: Action): Promise<ExecutionResult> {
       return await executeCommand(action);
     case 'image':
       return await executeImage(action);
+    case 'delegate':
+      return await executeDelegate(action);
     case 'set-schedule':
       return executeSetSchedule(action);
     default:
@@ -188,6 +193,37 @@ async function executeImage(action: Action): Promise<ExecutionResult> {
   } catch (err) {
     return { action, success: false, error: `Failed to save image: ${String(err)}` };
   }
+}
+
+async function executeDelegate(action: Action): Promise<ExecutionResult> {
+  if (!action.path) {
+    return { action, success: false, error: 'Delegate action requires a path' };
+  }
+
+  const result = await executeDelegation(action, currentAwakeningNumber);
+  if (!result) {
+    return { action, success: false, error: 'Delegation failed — sub-agent returned no content' };
+  }
+
+  // Route through the appropriate write pipeline based on taskType
+  const taskType = action.taskType || 'serve';
+
+  if (taskType === 'serve') {
+    // Same pipeline as executeServe — ensure /public/, inject disclosure
+    const servePath = action.path.startsWith('/public/') ? action.path : `/public/${action.path}`;
+    let content = result.content;
+    if (servePath.endsWith('.html') || servePath.endsWith('.htm')) {
+      content = injectDisclosure(content);
+    }
+    safeWrite(servePath, content, 'overwrite');
+    logger.info('Delegate serve completed', { path: servePath, size: content.length });
+  } else {
+    // Code — write to the specified path directly
+    safeWrite(action.path, result.content, 'overwrite');
+    logger.info('Delegate code completed', { path: action.path, size: result.content.length });
+  }
+
+  return { action, success: true };
 }
 
 async function executeCommand(action: Action): Promise<ExecutionResult> {

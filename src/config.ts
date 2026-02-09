@@ -25,5 +25,8 @@ export function loadConfig(): AgentConfig {
     port: parseInt(process.env.PORT || '8080', 10),
     testing,
     baseDir,
+    swarmMaxBudget: parseFloat(process.env.SWARM_MAX_BUDGET || '0.50'),
+    swarmMaxTurns: parseInt(process.env.SWARM_MAX_TURNS || '15', 10),
+    swarmMaxConcurrent: parseInt(process.env.SWARM_MAX_CONCURRENT || '3', 10),
   };
 }

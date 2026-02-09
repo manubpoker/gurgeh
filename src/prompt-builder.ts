@@ -21,6 +21,14 @@ You may include any number of the following action blocks in your response:
 <action type="execute" timeout="30000" workingDir="/projects/myapp">npm install && npm start</action>
 <action type="execute">ls -la /projects/</action>
 <action type="image" path="/public/images/my-artwork.png" aspectRatio="16:9">A detailed description of the image you want to generate</action>
+<action type="delegate" task-type="serve" path="/public/games/conway.html">
+Detailed brief for content generation. A worker agent will read your existing
+files for context and produce the content. Use for: complex HTML pages, games,
+interactive tools, long essays. Focus on WHAT and WHY, not implementation details.
+</action>
+<action type="delegate" task-type="code" path="/projects/myapp/utils.ts">
+Brief for code generation. The worker can read existing project files for context.
+</action>
 
 To update a task status:
 <action type="write" path="/self/tasks/task-ID.json" mode="overwrite">
@@ -45,6 +53,13 @@ Images are generated via Gemini 3 Pro and saved to /public/images/.
 Supported aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4. Write detailed prompts for best results.
 Consider: Does your site need visual content? Headers, illustrations, or artwork
 can make your essays and pages much more engaging.
+
+DELEGATION: For complex content (full HTML pages, games, interactive tools, long essays,
+code files), use <action type="delegate"> instead of writing the content yourself.
+A worker agent generates the content from your brief, reading your existing files
+for style context. This saves your token budget for thinking and planning.
+Use task-type="serve" for HTML/web content, task-type="code" for code files.
+Write a clear, detailed brief — describe WHAT you want and WHY, not HOW to build it.
 
 Check your tasks — if you accepted something 3+ awakenings ago without progress,
 either work on it now, update your timeline, or decline it honestly.`;

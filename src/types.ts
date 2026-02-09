@@ -7,10 +7,13 @@ export interface AgentConfig {
   port: number;
   testing: boolean;
   baseDir: string;
+  swarmMaxBudget: number;
+  swarmMaxTurns: number;
+  swarmMaxConcurrent: number;
 }
 
 export interface Action {
-  type: 'write' | 'serve' | 'think' | 'checkpoint' | 'message' | 'fetch' | 'set-schedule' | 'execute' | 'image';
+  type: 'write' | 'serve' | 'think' | 'checkpoint' | 'message' | 'fetch' | 'set-schedule' | 'execute' | 'image' | 'delegate';
   path?: string;
   mode?: 'append' | 'overwrite';
   content: string;
@@ -21,6 +24,7 @@ export interface Action {
   timeout?: number;
   workingDir?: string;
   aspectRatio?: string;
+  taskType?: 'serve' | 'code';
 }
 
 export interface AwakeningState {

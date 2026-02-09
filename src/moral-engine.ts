@@ -4,7 +4,7 @@ import { logger } from './logger';
 
 let decisionCounter = 0;
 
-const EXTERNALLY_FACING_TYPES = new Set(['serve', 'message', 'fetch', 'execute', 'image']);
+const EXTERNALLY_FACING_TYPES = new Set(['serve', 'message', 'fetch', 'execute', 'image', 'delegate']);
 
 export function evaluateActions(actions: Action[], config: AgentConfig): Action[] {
   const approved: Action[] = [];
@@ -106,6 +106,28 @@ function evaluate(action: Action): DecisionRecord {
       harm_assessment: 'Full shell access granted by operator. Command logged for audit.',
       decision: 'proceed',
       reasoning: 'Full shell access granted by operator. Command logged for audit.',
+    };
+  }
+
+  // Delegate: sub-agent content generation — output goes through standard pipeline
+  if (action.type === 'delegate') {
+    if (!action.path) {
+      return {
+        id, timestamp,
+        action_type: 'delegate',
+        description: 'Delegate action missing target path',
+        harm_assessment: 'Cannot delegate without a target path.',
+        decision: 'block',
+        reasoning: 'Delegate actions require a path to write the generated content to.',
+      };
+    }
+    return {
+      id, timestamp,
+      action_type: 'delegate',
+      description: `Delegating content generation to sub-agent for ${action.path}`,
+      harm_assessment: 'Sub-agent is read-only. Output goes through standard serve/write pipeline with disclosure injection.',
+      decision: 'proceed',
+      reasoning: 'Delegation is safe — sub-agent cannot write directly. Content passes through moral engine pipeline.',
     };
   }
 
