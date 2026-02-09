@@ -10,6 +10,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { exec } from 'child_process';
 import { generateImage } from './tools/image';
+import { takeScreenshot } from './tools/screenshot';
+import { recordUsage } from './economics';
 
 let config: AgentConfig;
 let currentAwakeningNumber = 0;
@@ -90,6 +92,8 @@ async function executeOne(action: Action): Promise<ExecutionResult> {
       return await executeImage(action);
     case 'delegate':
       return await executeDelegate(action);
+    case 'screenshot':
+      return await executeScreenshot(action);
     case 'set-schedule':
       return executeSetSchedule(action);
     default:
@@ -258,6 +262,28 @@ async function executeDelegate(action: Action): Promise<ExecutionResult> {
     safeWrite(action.path, result.content, 'overwrite');
     logger.info('Delegate code completed', { path: action.path, size: result.content.length });
   }
+
+  return { action, success: true };
+}
+
+async function executeScreenshot(action: Action): Promise<ExecutionResult> {
+  if (!action.path) {
+    return { action, success: false, error: 'Screenshot action requires a path' };
+  }
+
+  const result = await takeScreenshot(action.path, action.content);
+  if (!result) {
+    return { action, success: false, error: 'Screenshot failed — check logs (budget exceeded or puppeteer unavailable)' };
+  }
+
+  // Record vision API usage
+  recordUsage(currentAwakeningNumber, result.usage, 'opus', 'screenshot');
+
+  logger.info('Screenshot action executed', {
+    path: action.path,
+    imagePath: result.imagePath,
+    analysisLength: result.analysis.length,
+  });
 
   return { action, success: true };
 }

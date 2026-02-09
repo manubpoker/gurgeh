@@ -8,6 +8,7 @@ import { initEconomics, initializeLedger, recordUsage, hasBudget, getLedger } fr
 import { initCommunication, startServer, updateAwakeningCount, setTriggerAwakening, updateScheduleInfo } from './communication';
 import { initExecutor, executeActions } from './action-executor';
 import { initSwarm } from './swarm';
+import { initScreenshot, resetScreenshotCounter } from './tools/screenshot';
 import { gatherContext, writeAwakeningLog, markInboxRead } from './identity';
 import { buildUserBriefing, truncateBriefing, estimateTokens } from './prompt-builder';
 import { parseActions } from './action-parser';
@@ -41,6 +42,7 @@ export async function startSupervisor(cfg: AgentConfig): Promise<void> {
   initializeLedger(config.initialBudget);
   initExecutor(config);
   initSwarm(config);
+  initScreenshot(config);
   initMoralEngine(config.baseDir);
   initCheckpoint(config.spriteName);
   loadPageViews(config.baseDir);
@@ -138,6 +140,9 @@ async function runAwakening(): Promise<void> {
       logger.error('Reasoning engine unavailable. Skipping awakening.');
       return;
     }
+
+    // Reset per-awakening counters
+    resetScreenshotCounter();
 
     // 1. Gather context
     const state = gatherContext(config);
@@ -262,6 +267,9 @@ function appendWorkHistory(awakeningNumber: number, timestamp: string, results: 
         break;
       case 'fetch':
         lines.push(`- FETCHED: ${action.url}`);
+        break;
+      case 'screenshot':
+        lines.push(`- REVIEWED: ${action.path}`);
         break;
       case 'set-schedule':
         lines.push(`- SCHEDULE: updated to ${action.cron || action.content}`);

@@ -111,8 +111,8 @@ async function callWithRetry(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await apiClient.messages.create({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 8192,
+        model: 'claude-opus-4-6',
+        max_tokens: 16384,
         system: systemPrompt,
         messages,
         tools: TOOLS,
@@ -242,8 +242,8 @@ export async function executeDelegation(
     return null;
   }
 
-  // Record Haiku usage
-  recordUsage(awakeningNumber, result.usage, 'haiku');
+  // Record Opus delegation usage
+  recordUsage(awakeningNumber, result.usage, 'opus', 'delegation');
 
   logger.info('Delegation completed', {
     path: action.path,

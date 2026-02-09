@@ -53,7 +53,7 @@ function createDefaultLedger(initialBudget: number): EnergyLedger {
   };
 }
 
-export function recordUsage(awakeningNumber: number, usage: PromptUsage, modelType: 'opus' | 'haiku' = 'opus'): number {
+export function recordUsage(awakeningNumber: number, usage: PromptUsage, modelType: 'opus' | 'haiku' = 'opus', purpose: 'reasoning' | 'delegation' | 'screenshot' = 'reasoning'): number {
   if (!currentLedger) loadLedger();
   const ledger = currentLedger!;
 
@@ -65,13 +65,19 @@ export function recordUsage(awakeningNumber: number, usage: PromptUsage, modelTy
   // Prevent negative display rounding
   if (ledger.balance_usd < 0) ledger.balance_usd = 0;
 
+  const typeMap: Record<string, string> = {
+    reasoning: 'api_call',
+    delegation: 'delegation',
+    screenshot: 'screenshot_review',
+  };
+
   ledger.transactions.push({
     awakening: awakeningNumber,
     timestamp: new Date().toISOString(),
     input_tokens: usage.input_tokens,
     output_tokens: usage.output_tokens,
     cost,
-    type: modelType === 'haiku' ? 'haiku_delegation' : 'api_call',
+    type: typeMap[purpose] || 'api_call',
   });
 
   // Keep only last 100 transactions to prevent unbounded growth

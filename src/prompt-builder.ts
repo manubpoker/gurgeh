@@ -29,6 +29,12 @@ interactive tools, long essays. Focus on WHAT and WHY, not implementation detail
 <action type="delegate" task-type="code" path="/projects/myapp/utils.ts">
 Brief for code generation. The worker can read existing project files for context.
 </action>
+<action type="screenshot" path="/public/games/chess.html">
+Describe what you want to verify — layout, colors, interactivity, specific elements.
+Use this to visually review your published pages. A screenshot is taken and analyzed
+by a vision model. Results are saved to /self/screenshot-reviews/ for your reference.
+Max 3 per awakening.
+</action>
 
 To update a task status:
 <action type="write" path="/self/tasks/task-ID.json" mode="overwrite">
@@ -50,7 +56,7 @@ IMPORTANT — DELEGATE complex content: You have a LIMITED output budget per awa
 Do NOT use <action type="serve"> for complex HTML pages, games, interactive experiences,
 or long essays — your output will be truncated and the page will be incomplete.
 Instead, use <action type="delegate"> which sends your brief to a dedicated worker agent
-(Haiku) that has its own token budget to generate full, complete content.
+(Opus) that has its own token budget to generate full, complete content.
 Use <action type="serve"> ONLY for small updates, index pages, and simple content.
 Use <action type="delegate" task-type="serve" path="..."> for anything complex.
 

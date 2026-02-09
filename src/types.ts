@@ -13,7 +13,7 @@ export interface AgentConfig {
 }
 
 export interface Action {
-  type: 'write' | 'serve' | 'think' | 'checkpoint' | 'message' | 'fetch' | 'set-schedule' | 'execute' | 'image' | 'delegate';
+  type: 'write' | 'serve' | 'think' | 'checkpoint' | 'message' | 'fetch' | 'set-schedule' | 'execute' | 'image' | 'delegate' | 'screenshot';
   path?: string;
   mode?: 'append' | 'overwrite';
   content: string;
