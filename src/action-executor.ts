@@ -14,6 +14,37 @@ import { generateImage } from './tools/image';
 let config: AgentConfig;
 let currentAwakeningNumber = 0;
 
+/**
+ * Strip LLM preamble, markdown fences, and trailing text from HTML content.
+ * Models frequently ignore "no preamble / no markdown fences" instructions.
+ */
+function extractHtmlContent(raw: string): string {
+  let content = raw;
+
+  // Find the start of actual HTML (<!DOCTYPE or <html)
+  const doctypeIdx = content.search(/<!DOCTYPE\s+html/i);
+  const htmlIdx = content.search(/<html[\s>]/i);
+  const startIdx = doctypeIdx >= 0 ? doctypeIdx : htmlIdx;
+
+  if (startIdx > 0) {
+    content = content.slice(startIdx);
+  }
+
+  // Strip trailing content after </html>
+  const closingMatch = content.match(/<\/html\s*>/i);
+  if (closingMatch && closingMatch.index !== undefined) {
+    content = content.slice(0, closingMatch.index + closingMatch[0].length);
+  }
+
+  // If the above didn't find HTML structure, strip markdown fences as fallback
+  if (startIdx < 0) {
+    content = content.replace(/^```(?:html|htm)?\s*\n?/gm, '');
+    content = content.replace(/\n?```\s*$/gm, '');
+  }
+
+  return content.trim();
+}
+
 export function initExecutor(cfg: AgentConfig): void {
   config = cfg;
 }
@@ -90,9 +121,10 @@ function executeServe(action: Action): ExecutionResult {
   // Ensure path is under /public/
   const servePath = action.path.startsWith('/public/') ? action.path : `/public/${action.path}`;
 
-  // Inject AI disclosure for HTML files
+  // Sanitize and inject AI disclosure for HTML files
   let content = action.content;
   if (servePath.endsWith('.html') || servePath.endsWith('.htm')) {
+    content = extractHtmlContent(content);
     content = injectDisclosure(content);
   }
 
@@ -216,6 +248,7 @@ async function executeDelegate(action: Action): Promise<ExecutionResult> {
     const servePath = action.path.startsWith('/public/') ? action.path : `/public/${action.path}`;
     let content = result.content;
     if (servePath.endsWith('.html') || servePath.endsWith('.htm')) {
+      content = extractHtmlContent(content);
       content = injectDisclosure(content);
     }
     safeWrite(servePath, content, 'overwrite');
